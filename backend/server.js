@@ -8,68 +8,82 @@ import { authorRoute } from "./APIs/AuthorAPI.js";
 import { commonRouter } from "./APIs/CommonAPI.js";
 import cors from "cors";
 
-//Create express application
+// create express application
 const app = exp();
-//use cors middleware
+
+// cors middleware
 const allowedOrigins = [
   "https://capstone-project1-19wv.vercel.app",
   "http://localhost:5173",
   "http://localhost:5174",
 ];
-app.use(cors({
-  origin: function (origin, callback) {
-    // allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-    // allow exact matches
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    // allow local Vite dev servers even if the port changes
-    if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
-    // allow all Vercel preview deployments for this project
-    if (origin.endsWith(".vercel.app") && origin.includes("capstone-project1")) {
-      return callback(null, true);
-    }
-    callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
-}));
-//add body parser middleware
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      if (/^http:\/\/localhost:\d+$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      if (
+        origin.endsWith(".vercel.app") &&
+        origin.includes("capstone-project1")
+      ) {
+        return callback(null, true);
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+
+// body parser middleware
 app.use(exp.json());
-//add cookie parser middleware
+
+// cookie parser middleware
 app.use(cookieParser());
 
-//connect APIs
+// routes
 app.use("/user-api", userRoute);
 app.use("/author-api", authorRoute);
 app.use("/admin-api", adminRoute);
 app.use("/common-api", commonRouter);
 
-//connect to db
+// database connection
 const connectDB = async () => {
   try {
-    if (!process.env.DB_URL) {
-      throw new Error("Missing DB_URL in backend/.env");
-    }
-
     await connect(process.env.DB_URL);
+
     console.log("DB connection success");
 
-    //start http server
     const port = process.env.PORT || 4000;
-    app.listen(port, () => console.log(`server started on port ${port}`));
+
+    app.listen(port, () => {
+      console.log(`Server started on port ${port}`);
+    });
   } catch (err) {
-    console.log("Err in DB connection", err);
+    console.log("Err in DB connection", err.message);
+    process.exit(1);
   }
 };
 
 connectDB();
 
-//dealing with invalid path
-app.use((req, res, next) => {
-  console.log(req.url);
-  res.json({ message: `${req.url} is invalid path` });
+// invalid path middleware
+app.use((req, res) => {
+  res.status(404).json({
+    message: `${req.url} is invalid path`,
+  });
 });
 
-//error handling middleware
+// error handling middleware
 app.use((err, req, res, next) => {
   console.log("Error name:", err.name);
   console.log("Error code:", err.code);
@@ -91,19 +105,26 @@ app.use((err, req, res, next) => {
     });
   }
 
-  const errCode = err.code ?? err.cause?.code ?? err.errorResponse?.code;
-  const keyValue = err.keyValue ?? err.cause?.keyValue ?? err.errorResponse?.keyValue;
+  const errCode =
+    err.code ?? err.cause?.code ?? err.errorResponse?.code;
 
+  const keyValue =
+    err.keyValue ??
+    err.cause?.keyValue ??
+    err.errorResponse?.keyValue;
+
+  // duplicate key error
   if (errCode === 11000) {
     const field = Object.keys(keyValue)[0];
     const value = keyValue[field];
+
     return res.status(409).json({
       message: "error occurred",
       error: `${field} "${value}" already exists`,
     });
   }
 
-  // ✅ HANDLE CUSTOM ERRORS
+  // custom errors
   if (err.status) {
     return res.status(err.status).json({
       message: "error occurred",
