@@ -8,10 +8,7 @@ import { authorRoute } from "./APIs/AuthorAPI.js";
 import { commonRouter } from "./APIs/CommonAPI.js";
 import cors from "cors";
 
-const mongoConnectionOptions = {
-  serverSelectionTimeoutMS: 10000,
-};
-
+// MongoDB connection options
 const mongoConnectionOptions = {
   serverSelectionTimeoutMS: 10000,
 };
@@ -19,69 +16,75 @@ const mongoConnectionOptions = {
 // Create express application
 const app = exp();
 
-// ================= CORS FIX =================
+// ================= CORS =================
 app.use(
   cors({
-    origin: true, // allow all origins
+    origin: true,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-// ============================================
+// ========================================
 
-// add body parser middleware
+// body parser middleware
 app.use(exp.json());
 
-// add cookie parser middleware
+// cookie parser middleware
 app.use(cookieParser());
 
-// connect APIs
+// Home route
+app.get("/", (req, res) => {
+  res.send("Backend server is running successfully");
+});
+
+// Connect APIs
 app.use("/user-api", userRoute);
 app.use("/author-api", authorRoute);
 app.use("/admin-api", adminRoute);
 app.use("/common-api", commonRouter);
 
-// home route
-app.get("/", (req, res) => {
-  res.send("Backend server is running successfully");
-});
-
-// connect to db
+// Connect DB
 const connectDB = async () => {
   try {
     if (!process.env.DB_URL) {
-      throw new Error("Missing DB_URL in backend/.env");
+      throw new Error("Missing DB_URL");
     }
 
-    await connect(process.env.DB_URL);
+    await connect(
+      process.env.DB_URL.trim(),
+      mongoConnectionOptions
+    );
+
     console.log("DB connection success");
 
-    // start server
+    // Start server
     const port = process.env.PORT || 4000;
 
-    app.listen(port, () =>
-      console.log(`server started on port ${port}`)
-    );
+    app.listen(port, () => {
+      console.log(`server started on port ${port}`);
+    });
   } catch (err) {
-    console.log("Err in DB connection", err);
+    console.error("Err in DB connection:", err.message);
   }
 };
 
 connectDB();
 
-// invalid path
+// Invalid path handler
 app.use((req, res) => {
   res.status(404).json({
     message: `${req.url} is invalid path`,
   });
 });
 
-// error handling middleware
+// Error handling middleware
 app.use((err, req, res, next) => {
   console.log("Error name:", err.name);
   console.log("Error code:", err.code);
   console.log("Full error:", err);
 
-  // mongoose validation error
+  // Validation error
   if (err.name === "ValidationError") {
     return res.status(400).json({
       message: "error occurred",
@@ -89,7 +92,7 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // mongoose cast error
+  // Cast error
   if (err.name === "CastError") {
     return res.status(400).json({
       message: "error occurred",
@@ -107,6 +110,7 @@ app.use((err, req, res, next) => {
     err.cause?.keyValue ??
     err.errorResponse?.keyValue;
 
+  // Duplicate key error
   if (errCode === 11000) {
     const field = Object.keys(keyValue)[0];
     const value = keyValue[field];
@@ -117,7 +121,7 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // custom errors
+  // Custom error
   if (err.status) {
     return res.status(err.status).json({
       message: "error occurred",
@@ -125,7 +129,7 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // default error
+  // Default server error
   res.status(500).json({
     message: "error occurred",
     error: "Server side error",
